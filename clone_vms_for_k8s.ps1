@@ -4,7 +4,7 @@ if(($? -eq $false) -or ($args.Count -lt 1)){"Config file not exists."; exit 1}
 . $vm_config_file
 
 $lab_id_strings = $lab_id.ToString("00")
-Get-Folder -Type VM -Name $parent_folder_name -ErrorAction:Stop
+Get-Folder -Type VM -Name $parent_folder_name -ErrorAction:Stop | Out-Null
 $folder = Get-Datacenter -Name $dc_name | Get-Folder -Type VM -Name $parent_folder_name |
     New-Folder -Name $new_folder_name -ErrorAction:Stop
 
@@ -42,8 +42,6 @@ $fumidai_vm_list + $master_vm_list + $worker_vm_list | ForEach-Object {
         -RunAsync
 }
 
-#Get-Task
-# | where {$_.Name -eq "CloneVM_Task"}
 $clone_wait_interval = 10
 $s = 0
 while((Get-Task -Id ($vm_clone_tasks.Id) | where {$_.State -ne "Success"}).Count -ne 0){
@@ -71,3 +69,31 @@ $folder | Get-VM | select `
     @{N="IP";E={$_.Guest.IPAddress | where {$_ -like "*.*"}}},
     @{N="PG";E={($_|Get-NetworkAdapter).NetworkName}} |
     Sort-Object Name | ft -AutoSize
+
+# Generate Ansible Inventory
+"----- Inventory"
+"[kubernetes-master]"
+$master_vm_list | ForEach-Object {
+    $vm_name = $_
+    $vm = Get-Folder -Type VM -Name $new_folder_name | Get-VM -Name $vm_name
+    $vnic1_ip = $vm.Guest.Nics | where {$_.Device -like "* 1"} |
+        select -ExpandProperty IPAddress |
+        where {$_ -like "*.*.*.*"} |
+        where {$_ -notlike "169.254.*.*"} |
+        select -First 1
+    "$vm_name ansible_host=$vnic1_ip"
+}
+
+""
+"[kubernetes-worker]"
+$worker_vm_list | ForEach-Object {
+    $vm_name = $_
+    $vm = Get-Folder -Type VM -Name $new_folder_name | Get-VM -Name $vm_name
+    $vnic1_ip = $vm.Guest.Nics | where {$_.Device -like "* 1"} |
+        select -ExpandProperty IPAddress |
+        where {$_ -like "*.*.*.*"} |
+        where {$_ -notlike "169.254.*.*"} |
+        select -First 1
+    "$vm_name ansible_host=$vnic1_ip"
+}
+"-----"
