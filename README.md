@@ -6,14 +6,14 @@ k8s デモむけに、踏み台 1VM、Master 1VM、Worker 3VM をクローンす
 config をコピーしてから、環境に合わせて書き換え。
 
 ```
-PS> cp vm_config_SAMPLE.ps1 vm_config_xxx.ps1
+PS> cp ./vm_config_SAMPLE.ps1 ./vm_config_xxx.ps1
 ```
 
 VM クローン実行。
 
 ```
 PS> Connect-VIServer
-PS> ./clone_vm_k8s-lab_vars.ps1 ./vm_config_SAMPLE.ps1
+PS> ./clone_vms_for_k8s.ps1 ./vm_config_SAMPLE.ps1
 ```
 
 スクリプト終了時に、作成した VM の一覧が表示される。
