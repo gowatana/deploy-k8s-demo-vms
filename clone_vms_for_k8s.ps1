@@ -60,7 +60,7 @@ $folder | Get-VM | Sort-Object Name | ForEach-Object {
     sleep 5
 }
 
-$vm_start_wait_sec = 30
+$vm_start_wait_sec = 60
 Write-Host ("VM Start wait: " + $vm_start_wait_sec + "s")
 sleep $vm_start_wait_sec
 $folder | Get-VM | select `
