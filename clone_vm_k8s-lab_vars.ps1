@@ -1,11 +1,11 @@
-$lab_id = $args[0]
-$template_vm = "go-centos76-template-01"
-$folder_base = "01_Go"
-$folder_name = "k8s-" + (0 + $lab_id).ToString("00")
-$rp_name = "01_go"
-$ds_name = "SVT-Datastore"
-$pg_name = "Lab-VLAN2219-vSwitch1"
-$folder = Get-Folder -Type VM -Name $folder_base | New-Folder -Name $folder_name 
+$vm_config_file = $args[0]
+
+Get-ChildItem $vm_config_file | Out-Null
+if(($? -eq $false) -or ($args.Count -lt 1)){"Config file not exists."; exit 1}
+. $vm_config_file
+
+Get-Folder -Type VM -Name $folder_base -ErrorAction:Stop
+$folder = Get-Datacenter -Name $dc_name | Get-Folder -Type VM -Name $folder_base | New-Folder -Name $folder_name 
 
 ("k8s-f-" + $lab_id.ToString() + "1"),
 ("k8s-m-" + $lab_id.ToString() + "1"),
