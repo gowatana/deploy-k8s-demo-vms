@@ -4,7 +4,7 @@ $number_master_vm = 1
 $number_worker_vm = 3
 $number_fumidai_vm = 1
 
-$template_vm = "ol76-min-01"
+$template_vm = "ol77-min-update-20200118"
 $dc_name = "infra-dc-01"
 $parent_folder_name = "vm"
 $new_folder_name = "ol7-k8s-lab-" + (0 + $lab_id).ToString("00")
