@@ -1,9 +1,21 @@
+$start_time = Get-Date
+
+# Output Log
+$timestamp = Get-Date -f "yyyyMMdd-HHmmss"
+$log_dir_name = "./logs"
+New-Item -ItemType Directory -Path $log_dir_name -ErrorAction:Ignore
+$log_file_name = "clone_k8s-lab-vms_" + $timestamp + ".log"
+$log_path = Join-Path $log_dir_name $log_file_name
+Start-Transcript -Path $log_path
+
 $vm_config_file = $args[0]
 Get-ChildItem $vm_config_file | Out-Null
 if(($? -eq $false) -or ($args.Count -lt 1)){"Config file not exists."; exit 1}
 . $vm_config_file
 
 $lab_id_strings = $lab_id.ToString("00")
+
+Write-Host "Create VM Folder: $parent_folder_name/$new_folder_name"
 Get-Folder -Type VM -Name $parent_folder_name -ErrorAction:Stop | Out-Null
 $folder = Get-Datacenter -Name $dc_name | Get-Folder -Type VM -Name $parent_folder_name |
     New-Folder -Name $new_folder_name -ErrorAction:Stop
@@ -35,7 +47,7 @@ for($i = 1; $i -le $number_worker_vm; $i++){
 $vm_clone_tasks = @()
 $fumidai_vm_list + $master_vm_list + $worker_vm_list | ForEach-Object {
     $vm_name = $_
-    "Clone VM: $vm_name"
+    Write-Host "Clone VM: $vm_name"
     $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
         -ResourcePool $rp_name -Location $folder `
         -Datastore $ds_name -StorageFormat Thin `
@@ -61,6 +73,13 @@ $folder | Get-VM | Sort-Object Name | ForEach-Object {
 $vm_start_wait_sec = 60
 Write-Host ("VM Start wait: " + $vm_start_wait_sec + "s")
 sleep $vm_start_wait_sec
+
+# Info
+""
+"----- Summary -----"
+"VM Folder: $parent_folder_name/$new_folder_name"
+""
+"VM Summary:"
 $folder | Get-VM | select `
     Name,
     PowerState,
@@ -70,8 +89,7 @@ $folder | Get-VM | select `
     @{N="PG";E={($_|Get-NetworkAdapter).NetworkName}} |
     Sort-Object Name | ft -AutoSize
 
-# Generate Ansible Inventory
-"----- Inventory"
+"----- Inventory -----"
 "[kubernetes-master]"
 $master_vm_list | ForEach-Object {
     $vm_name = $_
@@ -97,3 +115,7 @@ $worker_vm_list | ForEach-Object {
     "$vm_name ansible_host=$vnic1_ip"
 }
 "-----"
+
+$end_time = Get-Date
+$end_time - $start_time | fl TotalMinutes,TotalSeconds
+Stop-Transcript
