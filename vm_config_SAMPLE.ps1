@@ -1,4 +1,5 @@
-#$lab_id = 1
+# VM Clone Config file
+
 $lab_id_string = "k8s-c01"
 
 $number_master_vm = 1
