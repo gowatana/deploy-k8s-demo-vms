@@ -25,7 +25,7 @@ function generate_ansible_inventory {
         [String]$vm_folder_name,
         [array]$vm_name_list
     )
-    Write-Host "[$group_name]"
+    Write-Output "[$group_name]"
     $vm_name_list | ForEach-Object {
         $vm_name = $_
         $vm = Get-Folder -Type VM -Name $vm_folder_name | Get-VM -Name $vm_name
@@ -34,9 +34,9 @@ function generate_ansible_inventory {
             where {$_ -like "*.*.*.*"} |
             where {$_ -notlike "169.254.*.*"} |
             select -First 1
-        "$vm_name ansible_host=$vnic1_ip"
+        Write-Output "$vm_name ansible_host=$vnic1_ip"
     }
-    Write-Host ""
+    Write-Output ""
 }
 
 $start_time = Get-Date
@@ -131,9 +131,11 @@ $folder | Get-VM | select `
     Sort-Object Name | ft -AutoSize
 
 "----- Inventory -----"
-generate_ansible_inventory "fumidai" $new_folder_name $fumidai_vm_list
-generate_ansible_inventory "kubernetes-master" $new_folder_name $master_vm_list
-generate_ansible_inventory "kubernetes-worker" $new_folder_name $worker_vm_list
+$inventory_file_path = Join-Path $log_dir_name ($lab_id_string + ".txt")
+generate_ansible_inventory "fumidai" $new_folder_name $fumidai_vm_list > $inventory_file_path
+generate_ansible_inventory "kubernetes-master" $new_folder_name $master_vm_list >> $inventory_file_path
+generate_ansible_inventory "kubernetes-worker" $new_folder_name $worker_vm_list >> $inventory_file_path
+Get-Content $inventory_file_path
 
 $end_time = Get-Date
 $end_time - $start_time | fl TotalMinutes,TotalSeconds
