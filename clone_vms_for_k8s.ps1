@@ -3,7 +3,26 @@ param(
     [bool]$list_mode = $false
 )
 
-Write-Host "list_mode pre: $list_mode"
+# Functions
+function generate_ansible_inventory {
+    param (
+        [String]$group_name,
+        [String]$vm_folder_name,
+        [array]$vm_name_list
+    )
+    Write-Host "[$group_name]"
+    $vm_name_list | ForEach-Object {
+        $vm_name = $_
+        $vm = Get-Folder -Type VM -Name $vm_folder_name | Get-VM -Name $vm_name
+        $vnic1_ip = $vm.Guest.Nics | where {$_.Device -like "* 1"} |
+            select -ExpandProperty IPAddress |
+            where {$_ -like "*.*.*.*"} |
+            where {$_ -notlike "169.254.*.*"} |
+            select -First 1
+        "$vm_name ansible_host=$vnic1_ip"
+    }
+    Write-Host ""
+}
 
 $start_time = Get-Date
 
@@ -100,31 +119,9 @@ $folder | Get-VM | select `
     Sort-Object Name | ft -AutoSize
 
 "----- Inventory -----"
-"[kubernetes-master]"
-$master_vm_list | ForEach-Object {
-    $vm_name = $_
-    $vm = Get-Folder -Type VM -Name $new_folder_name | Get-VM -Name $vm_name
-    $vnic1_ip = $vm.Guest.Nics | where {$_.Device -like "* 1"} |
-        select -ExpandProperty IPAddress |
-        where {$_ -like "*.*.*.*"} |
-        where {$_ -notlike "169.254.*.*"} |
-        select -First 1
-    "$vm_name ansible_host=$vnic1_ip"
-}
-
-""
-"[kubernetes-worker]"
-$worker_vm_list | ForEach-Object {
-    $vm_name = $_
-    $vm = Get-Folder -Type VM -Name $new_folder_name | Get-VM -Name $vm_name
-    $vnic1_ip = $vm.Guest.Nics | where {$_.Device -like "* 1"} |
-        select -ExpandProperty IPAddress |
-        where {$_ -like "*.*.*.*"} |
-        where {$_ -notlike "169.254.*.*"} |
-        select -First 1
-    "$vm_name ansible_host=$vnic1_ip"
-}
-"-----"
+generate_ansible_inventory "fumidai" $new_folder_name $fumidai_vm_list
+generate_ansible_inventory "kubernetes-master" $new_folder_name $master_vm_list
+generate_ansible_inventory "kubernetes-worker" $new_folder_name $worker_vm_list
 
 $end_time = Get-Date
 $end_time - $start_time | fl TotalMinutes,TotalSeconds
