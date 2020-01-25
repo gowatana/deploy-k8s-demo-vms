@@ -3,7 +3,41 @@ param(
     [bool]$list_mode = $false
 )
 
-Write-Host "list_mode pre: $list_mode"
+# Functions
+function generate_vm_name_list {
+    param (
+        [String]$lab_id_string,
+        [String]$vm_name_prefix,
+        [Int16]$vm_count
+    )
+    $vm_name_list = @()
+    for($i = 1; $i -le $vm_count; $i++){
+        $vm_number_strings = $i.ToString("00")
+        $vm_name = $lab_id_string + "-" + $vm_name_prefix + "-" + $vm_number_strings
+        $vm_name_list += $vm_name
+    }
+    return $vm_name_list
+}
+
+function generate_ansible_inventory {
+    param (
+        [String]$group_name,
+        [String]$vm_folder_name,
+        [array]$vm_name_list
+    )
+    Write-Output "[$group_name]"
+    $vm_name_list | ForEach-Object {
+        $vm_name = $_
+        $vm = Get-Folder -Type VM -Name $vm_folder_name | Get-VM -Name $vm_name
+        $vnic1_ip = $vm.Guest.Nics | where {$_.Device -like "* 1"} |
+            select -ExpandProperty IPAddress |
+            where {$_ -like "*.*.*.*"} |
+            where {$_ -notlike "169.254.*.*"} |
+            select -First 1
+        Write-Output "$vm_name ansible_host=$vnic1_ip"
+    }
+    Write-Output ""
+}
 
 $start_time = Get-Date
 
@@ -20,31 +54,10 @@ if((-Not $vm_config_file) -and ($args.Count -le 1)){"Config file not exists."; e
 Get-ChildItem $vm_config_file -ErrorAction:Stop | fl LastWriteTime, FullName
 . $vm_config_file
 
-$lab_id_strings = $lab_id.ToString("00")
-
-# Fumidai VMs
-$fumidai_vm_list = @()
-for($i = 1; $i -le $number_fumidai_vm; $i++){
-    $vm_number_strings = $i.ToString("00")
-    $vm_name_prefix = "k8s-f-"
-    $fumidai_vm_list += $vm_name_prefix + $lab_id_strings + "-" + $vm_number_strings
-}
-
-# Master VMs
-$master_vm_list = @()
-for($i = 1; $i -le $number_master_vm; $i++){
-    $vm_number_strings = $i.ToString("00")
-    $vm_name_prefix = "k8s-m-"
-    $master_vm_list += $vm_name_prefix + $lab_id_strings + "-" + $vm_number_strings
-}
-
-# Worker VMs
-$worker_vm_list = @()
-for($i = 1; $i -le $number_worker_vm; $i++){
-    $vm_number_strings = $i.ToString("00")
-    $vm_name_prefix = "k8s-w-"
-    $worker_vm_list += $vm_name_prefix + $lab_id_strings + "-" + $vm_number_strings
-}
+# Clone Fumidai / Master / Worker VMs
+$fumidai_vm_list = generate_vm_name_list $lab_id_string "f" $number_fumidai_vm
+$master_vm_list  = generate_vm_name_list $lab_id_string "m" $number_master_vm
+$worker_vm_list  = generate_vm_name_list $lab_id_string "w" $number_worker_vm
 
 if($list_mode -eq $false){
     Write-Host "Create VM Folder: $parent_folder_name/$new_folder_name"
@@ -53,7 +66,7 @@ if($list_mode -eq $false){
         New-Folder -Name $new_folder_name -ErrorAction:Stop
 
     $vm_clone_tasks = @()
-    $fumidai_vm_list + $master_vm_list + $worker_vm_list | ForEach-Object {
+    $fumidai_vm_list | ForEach-Object {
         $vm_name = $_
         Write-Host "Clone VM: $vm_name"
         $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
@@ -61,7 +74,23 @@ if($list_mode -eq $false){
             -Datastore $ds_name -StorageFormat Thin `
             -RunAsync
     }
-
+    $master_vm_list | ForEach-Object {
+        $vm_name = $_
+        Write-Host "Clone VM: $vm_name"
+        $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
+            -ResourcePool $rp_name -Location $folder `
+            -Datastore $ds_name -StorageFormat Thin `
+            -RunAsync
+    }
+    $worker_vm_list | ForEach-Object {
+        $vm_name = $_
+        Write-Host "Clone VM: $vm_name"
+        $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
+            -ResourcePool $rp_name -Location $folder `
+            -Datastore $ds_name -StorageFormat Thin `
+            -RunAsync
+    }
+    
     $clone_wait_interval = 10
     $s = 0
     while((Get-Task -Id ($vm_clone_tasks.Id) | where {$_.State -ne "Success"}).Count -ne 0){
@@ -86,10 +115,12 @@ if($list_mode -eq $false){
 # Info
 ""
 "----- Summary -----"
-"VM Folder: $parent_folder_name/$new_folder_name"
-""
-"VM Summary:"
+"VM Folder:"
 $folder = Get-Folder -Type VM -Name $parent_folder_name | Get-Folder -Name $new_folder_name
+$folder | select Parent,Name
+""
+
+"VM Summary:"
 $folder | Get-VM | select `
     Name,
     PowerState,
@@ -100,31 +131,11 @@ $folder | Get-VM | select `
     Sort-Object Name | ft -AutoSize
 
 "----- Inventory -----"
-"[kubernetes-master]"
-$master_vm_list | ForEach-Object {
-    $vm_name = $_
-    $vm = Get-Folder -Type VM -Name $new_folder_name | Get-VM -Name $vm_name
-    $vnic1_ip = $vm.Guest.Nics | where {$_.Device -like "* 1"} |
-        select -ExpandProperty IPAddress |
-        where {$_ -like "*.*.*.*"} |
-        where {$_ -notlike "169.254.*.*"} |
-        select -First 1
-    "$vm_name ansible_host=$vnic1_ip"
-}
-
-""
-"[kubernetes-worker]"
-$worker_vm_list | ForEach-Object {
-    $vm_name = $_
-    $vm = Get-Folder -Type VM -Name $new_folder_name | Get-VM -Name $vm_name
-    $vnic1_ip = $vm.Guest.Nics | where {$_.Device -like "* 1"} |
-        select -ExpandProperty IPAddress |
-        where {$_ -like "*.*.*.*"} |
-        where {$_ -notlike "169.254.*.*"} |
-        select -First 1
-    "$vm_name ansible_host=$vnic1_ip"
-}
-"-----"
+$inventory_file_path = Join-Path $log_dir_name ($lab_id_string + ".txt")
+generate_ansible_inventory "fumidai" $new_folder_name $fumidai_vm_list > $inventory_file_path
+generate_ansible_inventory "kubernetes-master" $new_folder_name $master_vm_list >> $inventory_file_path
+generate_ansible_inventory "kubernetes-worker" $new_folder_name $worker_vm_list >> $inventory_file_path
+Get-Content $inventory_file_path
 
 $end_time = Get-Date
 $end_time - $start_time | fl TotalMinutes,TotalSeconds
