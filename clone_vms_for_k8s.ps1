@@ -1,3 +1,10 @@
+param(
+    [string]$vm_config_file,
+    [bool]$list_mode = $false
+)
+
+Write-Host "list_mode pre: $list_mode"
+
 $start_time = Get-Date
 
 # Output Log
@@ -8,17 +15,12 @@ $log_file_name = "clone_k8s-lab-vms_" + $timestamp + ".log"
 $log_path = Join-Path $log_dir_name $log_file_name
 Start-Transcript -Path $log_path
 
-$vm_config_file = $args[0]
-Get-ChildItem $vm_config_file | Out-Null
-if(($? -eq $false) -or ($args.Count -lt 1)){"Config file not exists."; exit 1}
+"----- vm_config_file check -----"
+if((-Not $vm_config_file) -and ($args.Count -le 1)){"Config file not exists."; exit 1}
+Get-ChildItem $vm_config_file -ErrorAction:Stop | fl LastWriteTime, FullName
 . $vm_config_file
 
 $lab_id_strings = $lab_id.ToString("00")
-
-Write-Host "Create VM Folder: $parent_folder_name/$new_folder_name"
-Get-Folder -Type VM -Name $parent_folder_name -ErrorAction:Stop | Out-Null
-$folder = Get-Datacenter -Name $dc_name | Get-Folder -Type VM -Name $parent_folder_name |
-    New-Folder -Name $new_folder_name -ErrorAction:Stop
 
 # Fumidai VMs
 $fumidai_vm_list = @()
@@ -44,35 +46,42 @@ for($i = 1; $i -le $number_worker_vm; $i++){
     $worker_vm_list += $vm_name_prefix + $lab_id_strings + "-" + $vm_number_strings
 }
 
-$vm_clone_tasks = @()
-$fumidai_vm_list + $master_vm_list + $worker_vm_list | ForEach-Object {
-    $vm_name = $_
-    Write-Host "Clone VM: $vm_name"
-    $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
-        -ResourcePool $rp_name -Location $folder `
-        -Datastore $ds_name -StorageFormat Thin `
-        -RunAsync
-}
+if($list_mode -eq $false){
+    Write-Host "Create VM Folder: $parent_folder_name/$new_folder_name"
+    Get-Folder -Type VM -Name $parent_folder_name -ErrorAction:Stop | Out-Null
+    $folder = Get-Datacenter -Name $dc_name | Get-Folder -Type VM -Name $parent_folder_name |
+        New-Folder -Name $new_folder_name -ErrorAction:Stop
 
-$clone_wait_interval = 10
-$s = 0
-while((Get-Task -Id ($vm_clone_tasks.Id) | where {$_.State -ne "Success"}).Count -ne 0){
-    $s += $clone_wait_interval
-    sleep $clone_wait_interval
-    Write-Host ("Clone wait: " + $s + "s")
-}
+    $vm_clone_tasks = @()
+    $fumidai_vm_list + $master_vm_list + $worker_vm_list | ForEach-Object {
+        $vm_name = $_
+        Write-Host "Clone VM: $vm_name"
+        $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
+            -ResourcePool $rp_name -Location $folder `
+            -Datastore $ds_name -StorageFormat Thin `
+            -RunAsync
+    }
 
-$folder | Get-VM | Sort-Object Name | ForEach-Object {
-    $_ | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName $pg_name -Confirm:$false | ft -AutoSize
-    $_ | Set-VM -NumCpu 2 -MemoryGB 4 -Confirm:$false | ft -AutoSize
-    $_ | New-AdvancedSetting -Name disk.EnableUUID -Value True -Confirm:$False | ft -AutoSize
-    $_ | Start-VM
-    sleep 5
-}
+    $clone_wait_interval = 10
+    $s = 0
+    while((Get-Task -Id ($vm_clone_tasks.Id) | where {$_.State -ne "Success"}).Count -ne 0){
+        $s += $clone_wait_interval
+        sleep $clone_wait_interval
+        Write-Host ("Clone wait: " + $s + "s")
+    }
 
-$vm_start_wait_sec = 60
-Write-Host ("VM Start wait: " + $vm_start_wait_sec + "s")
-sleep $vm_start_wait_sec
+    $folder | Get-VM | Sort-Object Name | ForEach-Object {
+        $_ | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName $pg_name -Confirm:$false | ft -AutoSize
+        $_ | Set-VM -NumCpu 2 -MemoryGB 4 -Confirm:$false | ft -AutoSize
+        $_ | New-AdvancedSetting -Name disk.EnableUUID -Value True -Confirm:$False | ft -AutoSize
+        $_ | Start-VM
+        sleep 5
+    }
+
+    $vm_start_wait_sec = 60
+    Write-Host ("VM Start wait: " + $vm_start_wait_sec + "s")
+    sleep $vm_start_wait_sec
+}
 
 # Info
 ""
@@ -80,6 +89,7 @@ sleep $vm_start_wait_sec
 "VM Folder: $parent_folder_name/$new_folder_name"
 ""
 "VM Summary:"
+$folder = Get-Folder -Type VM -Name $parent_folder_name | Get-Folder -Name $new_folder_name
 $folder | Get-VM | select `
     Name,
     PowerState,
