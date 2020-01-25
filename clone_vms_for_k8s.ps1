@@ -4,6 +4,21 @@ param(
 )
 
 # Functions
+function generate_vm_name_list {
+    param (
+        [String]$lab_id_string,
+        [String]$vm_name_prefix,
+        [Int16]$vm_count
+    )
+    $vm_name_list = @()
+    for($i = 1; $i -le $vm_count; $i++){
+        $vm_number_strings = $i.ToString("00")
+        $vm_name = $lab_id_string + "-" + $vm_name_prefix + "-" + $vm_number_strings
+        $vm_name_list += $vm_name
+    }
+    $vm_name_list
+}
+
 function generate_ansible_inventory {
     param (
         [String]$group_name,
@@ -39,31 +54,14 @@ if((-Not $vm_config_file) -and ($args.Count -le 1)){"Config file not exists."; e
 Get-ChildItem $vm_config_file -ErrorAction:Stop | fl LastWriteTime, FullName
 . $vm_config_file
 
-$lab_id_strings = $lab_id.ToString("00")
-
 # Fumidai VMs
-$fumidai_vm_list = @()
-for($i = 1; $i -le $number_fumidai_vm; $i++){
-    $vm_number_strings = $i.ToString("00")
-    $vm_name_prefix = "k8s-f-"
-    $fumidai_vm_list += $vm_name_prefix + $lab_id_strings + "-" + $vm_number_strings
-}
+$fumidai_vm_list = generate_vm_name_list $lab_id_string "f" 1
 
 # Master VMs
-$master_vm_list = @()
-for($i = 1; $i -le $number_master_vm; $i++){
-    $vm_number_strings = $i.ToString("00")
-    $vm_name_prefix = "k8s-m-"
-    $master_vm_list += $vm_name_prefix + $lab_id_strings + "-" + $vm_number_strings
-}
+$master_vm_list = generate_vm_name_list $lab_id_string "m" 1
 
 # Worker VMs
-$worker_vm_list = @()
-for($i = 1; $i -le $number_worker_vm; $i++){
-    $vm_number_strings = $i.ToString("00")
-    $vm_name_prefix = "k8s-w-"
-    $worker_vm_list += $vm_name_prefix + $lab_id_strings + "-" + $vm_number_strings
-}
+$worker_vm_list = generate_vm_name_list $lab_id_string "w" 3
 
 if($list_mode -eq $false){
     Write-Host "Create VM Folder: $parent_folder_name/$new_folder_name"
