@@ -16,7 +16,7 @@ function generate_vm_name_list {
         $vm_name = $lab_id_string + "-" + $vm_name_prefix + "-" + $vm_number_strings
         $vm_name_list += $vm_name
     }
-    $vm_name_list
+    return $vm_name_list
 }
 
 function generate_ansible_inventory {
@@ -54,14 +54,10 @@ if((-Not $vm_config_file) -and ($args.Count -le 1)){"Config file not exists."; e
 Get-ChildItem $vm_config_file -ErrorAction:Stop | fl LastWriteTime, FullName
 . $vm_config_file
 
-# Fumidai VMs
-$fumidai_vm_list = generate_vm_name_list $lab_id_string "f" 1
-
-# Master VMs
-$master_vm_list = generate_vm_name_list $lab_id_string "m" 1
-
-# Worker VMs
-$worker_vm_list = generate_vm_name_list $lab_id_string "w" 3
+# Clone Fumidai / Master / Worker VMs
+$fumidai_vm_list = generate_vm_name_list $lab_id_string "f" $number_fumidai_vm
+$master_vm_list  = generate_vm_name_list $lab_id_string "m" $number_master_vm
+$worker_vm_list  = generate_vm_name_list $lab_id_string "w" $number_worker_vm
 
 if($list_mode -eq $false){
     Write-Host "Create VM Folder: $parent_folder_name/$new_folder_name"
@@ -70,7 +66,7 @@ if($list_mode -eq $false){
         New-Folder -Name $new_folder_name -ErrorAction:Stop
 
     $vm_clone_tasks = @()
-    $fumidai_vm_list + $master_vm_list + $worker_vm_list | ForEach-Object {
+    $fumidai_vm_list | ForEach-Object {
         $vm_name = $_
         Write-Host "Clone VM: $vm_name"
         $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
@@ -78,7 +74,23 @@ if($list_mode -eq $false){
             -Datastore $ds_name -StorageFormat Thin `
             -RunAsync
     }
-
+    $master_vm_list | ForEach-Object {
+        $vm_name = $_
+        Write-Host "Clone VM: $vm_name"
+        $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
+            -ResourcePool $rp_name -Location $folder `
+            -Datastore $ds_name -StorageFormat Thin `
+            -RunAsync
+    }
+    $worker_vm_list | ForEach-Object {
+        $vm_name = $_
+        Write-Host "Clone VM: $vm_name"
+        $vm_clone_tasks += Get-VM $template_vm | New-VM -Name $vm_name `
+            -ResourcePool $rp_name -Location $folder `
+            -Datastore $ds_name -StorageFormat Thin `
+            -RunAsync
+    }
+    
     $clone_wait_interval = 10
     $s = 0
     while((Get-Task -Id ($vm_clone_tasks.Id) | where {$_.State -ne "Success"}).Count -ne 0){
@@ -103,10 +115,12 @@ if($list_mode -eq $false){
 # Info
 ""
 "----- Summary -----"
-"VM Folder: $parent_folder_name/$new_folder_name"
-""
-"VM Summary:"
+"VM Folder:"
 $folder = Get-Folder -Type VM -Name $parent_folder_name | Get-Folder -Name $new_folder_name
+$folder | select Parent,Name
+""
+
+"VM Summary:"
 $folder | Get-VM | select `
     Name,
     PowerState,
